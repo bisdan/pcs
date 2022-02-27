@@ -410,37 +410,3 @@ class VCWDefaultDistributor(CrystalWellDistributor):
 
     def get_annotations(self):
         return self.polygons
-
-
-def correct_angle(theta):
-    """
-    This function makes sure that some angle lies in the interval (-90, 90). We are interested in oriented rectangles
-    which are symmetric under 180° rotations.
-    """
-    otheta = theta
-    ntheta = ((otheta + 90) % -180) + 90
-    return ntheta
-
-
-def to_img_coord2d(coord, camera, resx, resy):
-    """
-    Projects a random coord onto the visible 2D plane of the camera.
-    Requires bpy_extras.
-    """
-    coord2d = bpy_extras.object_utils.world_to_camera_view(bpy.context.window.scene, camera, coord)
-    coord2d[0] *= resx
-    coord2d[1] *= resy
-    return coord2d
-
-
-def project_solve(obj, res_x, res_y, camera):
-    """
-    This function projects obj onto the 2D plane of the camera and returns its coordinates.
-    """
-    verts = obj.data.vertices
-    coords = [obj.matrix_basis @ vert.co for vert in verts]
-    projected_coords = [to_img_coord2d(coord, camera, res_x, res_y) for coord in coords]
-    coords2d = [[pcoord[0], pcoord[1]] for pcoord in projected_coords]
-    coords2d = np.array(coords2d, dtype=np.float32)
-
-    return coords2d
