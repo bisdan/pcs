@@ -5,7 +5,7 @@ import random
 import cv2
 import bmesh
 import numpy as np
-from scipy.optimize import minimize
+from scipy.optimize import minimize, minimize_scalar
 from mathutils import Euler, Vector
 
 from abc import ABC, abstractmethod
@@ -238,30 +238,76 @@ class VCWDefaultDistributor(CrystalWellDistributor):
     def _correct_angle(self, theta):
         return ((theta + 90) % -180) + 90
 
-    def _l1(self, x, target_shape, crystal):
+    def _apply_params_area(self, crystal, lam, mu):
+        h = math.sqrt(lam / (mu + 1e-4))
+        w = mu * h
+        crystal.scale = (w, h, h)
+
+    def _apply_params_ratio(self, crystal, mu, lam):
+        h = math.sqrt(lam / (mu + 1e-4))
+        w = mu * h
+        crystal.scale = (w, h, h)
+
+    def _apply_params_angle(self, crystal, angle):
+        crystal.rotation_euler = Euler((crystal.rotation_euler[0], crystal.rotation_euler[1], angle))
+
+    def _l1_area(self, x, target_shape, crystal, mu):
+        target_area, _, _ = target_shape
+        self._apply_params_area(crystal, x, mu)
+
+        width, height, _ = self._get_min_area_rect(crystal)
+        area = width * height
+
+        l1_edge = abs(math.sqrt(area) - math.sqrt(target_area))
+
+        return l1_edge
+
+    def _l1_ratio(self, x, target_shape, crystal, lam):
+        _, target_ratio, _ = target_shape
+        self._apply_params_ratio(crystal, x, lam)
+
+        width, height, _ = self._get_min_area_rect(crystal)
+        ratio = width / (height + 1e-4)
+
+        l1_ratio = abs(ratio - target_ratio)
+
+        return l1_ratio
+
+    def _l1_angle(self, x, target_shape, crystal):
+        _, _, target_angle = target_shape
+        self._apply_params_angle(crystal, x)
+
+        _, _, theta = self._get_min_area_rect(crystal)
+
+        l1_angle = abs(target_angle - theta)
+        if l1_angle > 90:
+            l1_angle = 180 - l1_angle
+
+        l1_angle /= 90.0
+
+        return l1_angle
+
+
+    def _is_close(self, target_shape, crystal):
         target_area, target_ratio, target_angle = target_shape
-        crystal.scale = (x[0], x[1], x[1])
-        crystal.rotation_euler[2] = x[2]
         width, height, theta = self._get_min_area_rect(crystal)
         area = width * height
-        ratio = width / height
-        theta = math.radians(self._correct_angle(theta))
-        l1_area = abs(area - target_area)
-        l1_ratio = 10 * abs(ratio - target_ratio)
-        l1_angle = abs(math.degrees(theta) - math.degrees(target_angle))
-        return l1_area + l1_ratio + l1_angle
+        ratio = width / (height + 1e-4)
+        da = abs(math.sqrt(target_area) - math.sqrt(area))
+        dr = abs(target_ratio - ratio)
+        dt = abs(target_angle - theta)
+        if dt > 90:
+            dt = abs(180 - dt)
 
-    def _is_close(self, target_shape, width, height, theta):
-        target_area, target_ratio, target_angle = target_shape
-        area = width * height
-        ratio = width / (height + 1e-6)
-        da = math.sqrt(target_area) - math.sqrt(area)
-        dr = target_ratio - ratio
-        dt = target_angle - theta
-        if abs(da) < 2.5 and abs(dr) < 0.25 and abs(dt) < 5:
-            return True, abs(da), abs(dr), abs(dt)
+        area_passed = da < 2
+        ratio_passed = dr < 0.2
+        angle_passed = dt < 2
+
+        if area_passed and ratio_passed and angle_passed:
+            return True, area_passed, ratio_passed, angle_passed
         else:
-            return False, abs(da), abs(dr), abs(dt)
+            return False, area_passed, ratio_passed, angle_passed
+
 
     def _in_bounds(self, crystal, cam_coords):
         xy_in_bounds = np.all(
@@ -308,11 +354,62 @@ class VCWDefaultDistributor(CrystalWellDistributor):
         else:
             return False, this_segm
 
+    def _minimize_step(self, current_shape, crystal, target_shape):
+
+        res_area = minimize_scalar(
+            self._l1_area,
+            args=(target_shape, crystal, current_shape[1]),
+            bounds=(0, 1),
+            method="Bounded",
+            options={'xatol': 1e-6, 'maxiter': 500}
+        )
+        if not res_area.success:
+            return None
+
+        res_ratio = minimize_scalar(
+            self._l1_ratio,
+            args=(target_shape, crystal, res_area.x),
+            bounds=(0.1, 20),
+            method="Bounded",
+            options={'xatol': 1e-6, 'maxiter': 500}
+        )
+        if not res_area.success:
+            return None
+
+        res_angle = minimize_scalar(
+            self._l1_angle,
+            args=(target_shape, crystal),
+            bounds=(-math.pi, math.pi),
+            method="Bounded",
+            options={'xatol': 1e-6, 'maxiter': 500}
+        )
+
+        if not res_angle.success:
+            return None
+        else:
+            return np.array((res_area.x, res_ratio.x, res_angle.x))
+
+    def _minimize(self, current_shape, crystal, target_shape):
+        max_tries = 4
+        n_tries = 0
+        while n_tries < max_tries:
+            current_shape = self._minimize_step(current_shape, crystal, target_shape)
+            if current_shape is None:
+                return None
+            flag, apass, rpass, tpass = self._is_close(target_shape, crystal)
+            if flag:
+                return current_shape, apass, rpass, tpass
+            else:
+                n_tries += 1
+
+        return None, apass, rpass, tpass
+
+
     def _solve_for_target_shape(self, target_shape, crystal, segmentations, gather_stats=True):
         # requires initial crystals to be centered geometrically
 
         n_tries = 0
-        while n_tries < 1e3:
+        while n_tries < 50:
             # print(n_tries)
             translation = self.random_translation_function()
             crystal.scale = (1, 1, 1)
@@ -320,42 +417,30 @@ class VCWDefaultDistributor(CrystalWellDistributor):
             crystal.rotation_euler = (random.random() * math.pi, random.random() * math.pi, 0)
 
             initial_guess = self._get_initial_guess(target_shape, crystal)
-            # add noise to the angle of the initial guess
-            initial_guess[-1] += np.random.normal(scale=0.2)
 
-            res = minimize(self._l1, initial_guess, args=(target_shape, crystal,), tol=1e-6)
-            if not res.success:
+            res, apass, rpass, tpass = self._minimize(initial_guess, crystal, target_shape)
+            if res is None:
                 n_tries += 1
-                # print("reject proposal: minimize failure", n_tries)
-                continue
-
-            crystal.scale = (res.x[0], res.x[1], res.x[1])
-            crystal.rotation_euler[2] = res.x[2]
-            width, height, theta = self._get_min_area_rect(crystal)
-
-            close, da, dr, dt = self._is_close(target_shape, width, height, theta)
-            if not close:
-                n_tries += 1
-                # print("reject proposal: not close", n_tries, da, dr, dt)
+                print("reject proposal: failed to minimize", n_tries, "area", apass, "ratio", rpass, "angle", tpass)
                 continue
 
             cam_coords = self._to_camera_coords(crystal)
             if not self._in_bounds(crystal, cam_coords):
                 n_tries += 1
-                # print("reject proposal: out of bounds", n_tries)
+                print("reject proposal: out of bounds", n_tries)
                 continue
 
             has_overlap, segm = self._has_overlap(cam_coords, segmentations)
             if has_overlap:
                 n_tries += 1
-                # print("reject proposal: has overlap", n_tries)
+                print("reject proposal: has overlap", n_tries)
                 continue
             else:
                 segmentations.append(segm)
 
             return crystal, cam_coords
 
-        return None, None
+        return crystal, None
 
     def _setup_camera_inv_mat(self):
         camera = bpy.context.scene.camera
