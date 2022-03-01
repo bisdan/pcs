@@ -6,7 +6,7 @@ bl_info = {
     "blender": (3, 0, 0),
     "location": "3D View > CrystalWell",
     "warning": "",
-    "wiki_url": "",
+    "wiki_url": "https://github.com/bisdan/pcs",
     "tracker_url": "",
     "category": "Development"
 }
