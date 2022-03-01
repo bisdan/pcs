@@ -261,7 +261,7 @@ class CrystalWellProperties(PropertyGroup):
         precision=2,
         default=0.75,
         min=0.75,
-        max=0.90,
+        max=1.00,
         update=update_min_max_material
     )
     crystal_material_max_brightness: FloatProperty(
@@ -270,7 +270,7 @@ class CrystalWellProperties(PropertyGroup):
         precision=2,
         default=0.90,
         min=0.75,
-        max=0.90,
+        max=1.00,
         update=update_min_max_material
     )
     ### LIGHT ###
