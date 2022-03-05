@@ -116,7 +116,7 @@ cd ${BLENDER_DIR}/3.0/python/bin
 
 
 ### Blender Headless usage instructions
-If you have saved a settings_file.json in the blender addon UI, you can use this file for headless execution.
+If you have saved a pcs_settings.json in the blender addon UI, you can use this file for headless execution.
 Simply call 
 ```bash
 python3 headless_execution.py pcs_settings.json
