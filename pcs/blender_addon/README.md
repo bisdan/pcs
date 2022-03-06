@@ -31,7 +31,7 @@ If you encounter such a situation, feel free to let us know and create an issue!
 ## Architecture of the add-on
 The `CrystalWellLoader` component was created to manage import and loading of single crystals.
 The user interface manages and controls all settings. When the user hits the "Render" button, all settings are saved in the `CrystalWellSettings` component. 
-After a CrystalWellSimulator component is created, different components of the crystal well are prepared to create and render the virtual scene. More specifically. Light, Camera, Distributor, Material, Builder, Writer and Renderer:
+After a CrystalWellSimulator component is created, different components of the crystal well are prepared to create and render the virtual scene. More specifically: Light, Camera, Distributor, Material, Builder, Writer and Renderer:
 
 * The **light** places a bottom light (optional) and a top light in director of the plane.
 * The **camera** component handles the camera position and angle.
