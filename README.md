@@ -4,7 +4,7 @@
 Generating large-scale synthetic data sets of crystallization processes for supervised machine-learning.
 
 ## PCS data sets
-The datasets are distributed in the COCO format and can be downloaded from [LRZ Sync+Share](https://syncandshare.lrz.de/getlink/fiQmpeVNi4XKJ9ioGLsTSVJY).
+The data sets are distributed in the COCO format and can be downloaded from [LRZ Sync+Share](https://syncandshare.lrz.de/getlink/fiQmpeVNi4XKJ9ioGLsTSVJY).
 - **pcs_train** (322558 images, 18.1 GiB): training set
 - **pcs_validation** (10000 images, 569.8 MiB): validation set (not augmented)
 - **pcs_validation_aug** (10000 images, 771.1 MiB): augmented validation set
@@ -145,3 +145,7 @@ iopairs = idx.load_iopairs()
 idx.to_coco("path/to/output/dir", box_mode="xywha", digits=2)
 ```
 The PCS data set is distributed in COCO format. If another format is required, then a corresponding export function needs to be implemented. However, one might still find the ```load_iopairs``` function of the Indexer useful.
+
+## Inference
+
+Model parameters and examples for inference can also be obtained from [LRZ Sync+Share](https://syncandshare.lrz.de/getlink/fiQmpeVNi4XKJ9ioGLsTSVJY). This currently requires a NVIDIA GPU.
