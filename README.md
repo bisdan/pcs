@@ -148,4 +148,4 @@ The PCS data set is distributed in COCO format. If another format is required, t
 
 ## Inference
 
-Model parameters and examples for inference can also be obtained from [LRZ Sync+Share](https://syncandshare.lrz.de/getlink/fiQmpeVNi4XKJ9ioGLsTSVJY). This currently requires a NVIDIA GPU.
+Model parameters and examples for inference can also be obtained from [LRZ Sync+Share](https://syncandshare.lrz.de/getlink/fiQmpeVNi4XKJ9ioGLsTSVJY). This currently requires a NVIDIA GPU (instructions tested for Tesla V100, RTX 2080, and GTX 1080 with CUDA Version: 11.2 and PyTorch 1.9).
