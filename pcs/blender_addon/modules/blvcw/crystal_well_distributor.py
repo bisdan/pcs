@@ -85,9 +85,6 @@ class CrystalWellRandomDistributor(CrystalWellDistributor):
 
 
 class VCWDefaultDistributor(CrystalWellDistributor):
-    """
-    The default distributor used to generate the pcs_train and pcs_validation data sets.
-    """
 
     def __init__(self, total_crystal_area_min=0.05, total_crystal_area_max=0.5, res_x=384, res_y=384,
                  max_n_crystals=500, crystal_area_min=3 ** 2, crystal_area_max=128 ** 2, crystal_edge_min=3,
