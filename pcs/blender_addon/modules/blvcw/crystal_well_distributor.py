@@ -94,12 +94,7 @@ class VCWDefaultDistributor(CrystalWellDistributor):
                  crystal_edge_max=384, crystal_aspect_ratio_max=8 / 0.7, elongation_perturbation=6.0,
                  subdivide_edges=10, smooth_shading=True, random_translation_function=None, crystal_well_loader=None,
                  cw_depth=None):
-        """
-        Args:
-            crystal_area_min (float): Minimum projected crystal area expressed as a fraction of the total image area.
-            crystal_area_max (float): Maximum projected crystal area expressed as a fraction of the total image area.
-            max_n_crystals (int): Maximum number of crystals to be placed in one image.
-        """
+
         super().__init__()
 
         self.total_crystal_area_min = total_crystal_area_min
@@ -128,27 +123,12 @@ class VCWDefaultDistributor(CrystalWellDistributor):
         self.polygons = []  # to collect annotations
 
     def _draw_area(self, area_min, area_max):
-        """
-        Draw the area of the target crystal shape. This area is sampled from an inverse distribution defined in the interval [area_min, area_max].
-        This function first samples from an uniform distribution in the interval [0, 1] and transforms that value to a sample from the inverse distribution.
-        """
         return area_min * ((area_max / area_min) ** random.random())
 
     def _get_edge_lengths(self, area, ratio):
         return math.sqrt(area * ratio), math.sqrt(area / ratio)
 
     def _get_target_shape(self, remaining_crystal_area):
-        """
-        Generate a new target shape for the crystals to be placed into the current scene.
-        It is not obvious how one should enforce the constraints given through
-        the shape defining arguments of the constructor.
-        One could either bias the target_area towards larger areas for high ratios,
-        or bias the target_ratio towards smaller ratios (less elongated crystals) for small areas.
-        The latter option is chosen here since we generally want to be able to detect small crystals.
-        However, this choice introduces the bias of small crystals having small ratios,
-        an effect that can be observed in the dataset statistics of vcw_train_100k and vcw_test_10k.
-        This bias is referred to as "ratio bias".
-        """
         area_max = min(self.crystal_area_max, remaining_crystal_area)
 
         if area_max < self.crystal_area_min:
@@ -167,10 +147,7 @@ class VCWDefaultDistributor(CrystalWellDistributor):
             return target_crystal_area - (np.sum(segmentations, axis=0) > 0).sum()
 
     def _elongation_perturbation(self, crystal):
-        """
-        The 3D crystal models used for the vcw_train_100k and vcw_test_10k datasets tend to have pointy faces.
-        This function flattens them out a bit for more crystal shape variability.
-        """
+
         dx = random.uniform(0, self.elongation_perturbation)
         for vert in crystal.data.vertices:
             if vert.co[0] > 0:
