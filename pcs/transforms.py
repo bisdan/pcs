@@ -9,8 +9,10 @@ from pcs.utils import (correct_angle, get_rotation_matrix, grayscale_to_float,
 
 
 def _weighted_blending(base_layer, weights1, alpha_layer, weights2):
-    image = (base_layer * weights1 + alpha_layer * weights2) / (weights1 + weights2)
+    image = (base_layer * weights1 + alpha_layer *
+             weights2) / (weights1 + weights2)
     return image
+
 
 def _additive_blending(image, mask):
     image = image + mask
@@ -18,20 +20,27 @@ def _additive_blending(image, mask):
     image[image < 0] = 0
     return image
 
+
 class PCSTransform:
     def __init__(self):
         pass
+
     def apply_image(self, image):
         return image
+
     def apply_coords(self, coords):
         return coords
+
     def apply_rotated_box(self, rotated_box):
         return rotated_box
+
     def apply_segmentation(self, segmentation):
         return segmentation
 
+
 class PCSNoOpTransform(PCSTransform):
     pass
+
 
 class PCSTransformListIterator:
     def __init__(self, transform_list):
@@ -51,21 +60,21 @@ class PCSTransformList(PCSTransform):
     def __init__(self, transforms):
         super().__init__()
         self.transforms = transforms
-    
-    def apply_image(self, image):            
+
+    def apply_image(self, image):
         for transform in self.transforms:
             image = transform.apply_image(image)
             assert image.max() <= 1 and image.min() >= 0
-        
+
         return image
-    
+
     def apply_rotated_box(self, rotated_box):
         for transform in self.transforms:
             rotated_box = transform.apply_rotated_box(rotated_box)
             if rotated_box is None:
                 return None
         return rotated_box
-    
+
     def apply_coords(self, coords):
         for transform in self.transforms:
             coords = transform.apply_coords(coords)
@@ -82,6 +91,7 @@ class PCSTransformList(PCSTransform):
 
     def __iter__(self):
         return PCSTransformListIterator(self)
+
 
 class PCSBlendTransform(PCSTransform):
     def __init__(self, base_layer, alpha_layer, suppress):
@@ -100,15 +110,20 @@ class PCSBlendTransform(PCSTransform):
             nom / den
         )
 
+
 class PCSAdditiveTransform(PCSTransform):
     def __init__(self, mask):
         self.mask = mask
+
     def apply_image(self, image):
         return _additive_blending(image, self.mask)
 
+
 class PCSBrightnessTransform(PCSTransform):
-    def __init__(self, enhancement_factor):
+    def __init__(self, r1, r2, enhancement_factor):
         self.enhancement_factor = enhancement_factor
+        self.r1 = r1
+        self.r2 = r2
 
     def apply_image(self, image):
         image = grayscale_to_uint(image)
@@ -117,9 +132,16 @@ class PCSBrightnessTransform(PCSTransform):
         image = enhancer.enhance(self.enhancement_factor)
         image = np.array(image)
         image = grayscale_to_float(image)
+        if self.r1 > 0.5:
+            if self.r2 > 0.5:
+                image = np.sqrt(image)
+            else:
+                image = image ** 2
         return image
 
 # not used
+
+
 class PCSCompressionTransform(PCSTransform):
     def __init__(self, quality):
         self.quality = quality
@@ -164,6 +186,7 @@ class PCSDistortionTransform(PCSTransform):
             image[i, :] = np.roll(image[i, :], int(self.shift_lambda(i)))
         return image
 
+
 class PCSFilterUndetectableTransform(PCSTransform):
     def __init__(self, num_objects, min_contrast_variation):
         self.num_objects = num_objects
@@ -185,7 +208,8 @@ class PCSFilterUndetectableTransform(PCSTransform):
         cv2.drawContours(mask, [int_segmentation], 0, 1, -1)
         object_pixels = self.image[mask > 0]
         contrast = object_pixels.max() - object_pixels.min()
-        if contrast <= self.min_contrast_variation:  # pixel values between [0, 1]
+        # pixel values between [0, 1]
+        if contrast <= self.min_contrast_variation:
             self.detectable_flags[self.object_index] = False
         self.object_index += 1
         return segmentation
@@ -213,12 +237,14 @@ class PCSFlipTransform(PCSTransform):
         self.flip = 0 if flip == "h" else 1
 
     def apply_coords(self, coords):
-        coords[:, self.flip] = -(coords[:, self.flip] - self.origin) + self.origin
+        coords[:, self.flip] = - \
+            (coords[:, self.flip] - self.origin) + self.origin
         return coords
 
     def apply_rotated_box(self, rotated_boxes):
         rotated_boxes = np.array(rotated_boxes)
-        rotated_boxes[:2] = self.apply_coords(rotated_boxes[:2][np.newaxis, :])[0]
+        rotated_boxes[:2] = self.apply_coords(
+            rotated_boxes[:2][np.newaxis, :])[0]
         rotated_boxes[4] = -rotated_boxes[4]
         return rotated_boxes.tolist()
 
@@ -258,6 +284,7 @@ class PCSRotationTransform(PCSTransform):
 
     def apply_segmentation(self, segmentation):
         return self.apply_coords(segmentation)
+
 
 class PCSContrastTransform(PCSTransform):
     def __init__(self, enhancement_factor=1.0):

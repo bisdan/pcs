@@ -9,10 +9,14 @@ from scipy.interpolate import CubicSpline
 from pcs.transforms import *
 
 from pcs.utils import (
-    get_rotation_matrix, 
+    get_rotation_matrix,
     grayscale_to_float,
     grayscale_to_uint
 )
+
+from numpy import random, mgrid, dstack, empty
+from scipy.spatial import cKDTree
+
 
 def _randomize_structured_noise_frequency(shape):
     # from a few pixels
@@ -31,6 +35,7 @@ def _randomize_structured_noise_frequency(shape):
 class PCSAugmentation:
     def get_transform(self, image, segmentations, rotated_boxes):
         raise NotImplementedError
+
 
 class PCSNoOpAugmentation(PCSAugmentation):
     def get_transform(self, image, segmentations, rotated_boxes):
@@ -51,6 +56,7 @@ class PCSAugmentationList(PCSAugmentation):
             for augmentation in self.augmentations
         ]
         return PCSTransformList(transforms)
+
 
 class PCSPerlinAugmentation(PCSAugmentation):
     def __init__(self, p_image=0.8, max_num_layers=10):
@@ -99,7 +105,7 @@ class PCSPerlinAugmentation(PCSAugmentation):
         frequencies = [
             _randomize_structured_noise_frequency(shape)
             for i in range(num_layers)
-        ]        
+        ]
         layers = [
             PCSPerlinAugmentation._generate_perlin_layer(shape, freq)
             for freq in frequencies
@@ -124,7 +130,7 @@ class PCSPerlinAugmentation(PCSAugmentation):
     def get_transform(self, image, segmentations, rotated_boxes):
         if random.random() > self.p_image:
             return PCSNoOpTransform()
-        
+
         layer_shape = image.shape
 
         base_layer = PCSPerlinAugmentation._stack_perlin_layers(
@@ -145,6 +151,95 @@ class PCSPerlinAugmentation(PCSAugmentation):
             suppress=random.choice(("bright", "dark"))
         )
 
+
+class PCSWorleyAugmentation(PCSAugmentation):
+    def __init__(self, p_image=0.8, max_num_layers=2):
+        self.p_image = p_image
+        self.max_num_layers = max_num_layers
+
+    @staticmethod
+    def _generate_worley_layer(shape, frequency, n_threads=3):
+
+        height, width = shape
+
+        diag = int(round(math.sqrt((height * width))))
+        frequency = 2*random.randint(diag)
+        if frequency < 8:
+            frequency = 8
+
+        points = [[random.randint(0, height), random.randint(
+            0, width)] for _ in range(frequency)]
+
+        # Makes array with coordinates as values
+        coord = dstack(mgrid[0:height, 0:width])
+
+        tree = cKDTree(points)  # Build Tree
+        # Calculate distances (workers=-1: Uses all CPU Cores)
+        distances = tree.query(coord, workers=-1)[0]
+        # normalize to [0, 1]
+        distances -= distances.min()
+        # This case should (almost) never happen
+        if distances.max() == 0:
+            return None
+        distances /= distances.max()
+        return -distances
+
+    @staticmethod
+    def _stack_worley_layers(
+        shape,
+        max_num_layers=3,
+    ):
+        num_layers = random.randint(1, max_num_layers)
+        frequencies = [
+            _randomize_structured_noise_frequency(shape)
+            for i in range(num_layers)
+        ]
+        layers = [
+            PCSWorleyAugmentation._generate_worley_layer(shape, freq)
+            for freq in frequencies
+        ]
+        layer = np.mean(layers, axis=0)
+
+        # normalize to [0, 1]
+        layer -= layer.min()
+        # This case should (almost) never happen
+        if layer.max() == 0:
+            return None
+        layer /= layer.max()
+
+        # equalize for consistent behavior
+        layer = grayscale_to_float(
+            cv2.equalizeHist(
+                grayscale_to_uint(layer)
+            )
+        )
+        return layer
+
+    def get_transform(self, image, segmentations, rotated_boxes):
+        if random.random() > self.p_image:
+            return PCSNoOpTransform()
+
+        layer_shape = image.shape
+
+        base_layer = PCSWorleyAugmentation._stack_worley_layers(
+            layer_shape,
+            max_num_layers=self.max_num_layers
+        )
+        alpha_layer = PCSWorleyAugmentation._stack_worley_layers(
+            layer_shape,
+            max_num_layers=self.max_num_layers
+        )
+
+        if base_layer is None or alpha_layer is None:
+            return PCSNoOpTransform()
+
+        return PCSBlendTransform(
+            base_layer=base_layer,
+            alpha_layer=alpha_layer,
+            suppress=random.choice(("bright", "dark"))
+        )
+
+
 class PCSBrightnessAugmentation(PCSAugmentation):
     def __init__(self, p_image=1.0):
         self.p_image = p_image
@@ -155,7 +250,11 @@ class PCSBrightnessAugmentation(PCSAugmentation):
 
         enhancement_factor = 2 ** random.uniform(-1, 1)
 
-        return PCSBrightnessTransform(enhancement_factor=enhancement_factor)
+        return PCSBrightnessTransform(
+            random.random(),
+            random.random(),
+            enhancement_factor=enhancement_factor
+        )
 
 
 class PCSGaussNoiseAugmentation(PCSAugmentation):
@@ -173,6 +272,7 @@ class PCSGaussNoiseAugmentation(PCSAugmentation):
             loc=0, scale=noise_scale, size=image.shape
         )
         return PCSAdditiveTransform(gauss_noise)
+
 
 class PCSImpulsNoiseAugmentation(PCSAugmentation):
     def __init__(self, p_image=0.2, p_salt=0.05, p_pepper=0.05):
@@ -215,7 +315,6 @@ class PCSWaveAugmentation(PCSAugmentation):
             freq * math.cos(theta)
         )
 
-
     def _get_wave_layer(self, xx, yy, prop):
 
         phase = random.uniform(0, 2*math.pi)
@@ -224,9 +323,9 @@ class PCSWaveAugmentation(PCSAugmentation):
 
         layer -= layer.min()
         if layer.max() == 0:
-            return None      
+            return None
         layer /= layer.max()
-        
+
         # equalize intensity for consistent behavior
         layer = grayscale_to_float(
             cv2.equalizeHist(
@@ -255,12 +354,11 @@ class PCSWaveAugmentation(PCSAugmentation):
         ]
         layer = np.mean(layers, axis=0)
 
-
         layer -= layer.min()
         if layer.max() == 0:
-            return None      
+            return None
         layer /= layer.max()
-        
+
         # equalize intensity for consistent behavior
         layer = grayscale_to_float(
             cv2.equalizeHist(
@@ -321,7 +419,7 @@ class PCSDistortionAugmentation(PCSAugmentation):
         if random.random() > self.p_image:
             return PCSNoOpTransform()
         else:
-            shift_lambda = lambda x: int(random.choice((-1, 0, 1)))
+            def shift_lambda(x): return int(random.choice((-1, 0, 1)))
             return PCSDistortionTransform(shift_lambda=shift_lambda)
 
 
@@ -336,6 +434,7 @@ class PCSFilterUndetectableAugmentation(PCSAugmentation):
             num_objects=len(segmentations),
             min_contrast_variation=self.min_contrast_variation,
         )
+
 
 class PCSFilterInvalidAugmentation(PCSAugmentation):
     def __init__(self, min_edge_length=0):
@@ -390,7 +489,7 @@ class PCSSplineAugmentation(PCSAugmentation):
         coords = np.vstack((xs, ys)).T
         rotmat = get_rotation_matrix(random.uniform(0, 360))
         coords = np.dot(rotmat, coords.T).T
-        
+
         center = np.array(
             (
                 height / 2,
@@ -398,9 +497,8 @@ class PCSSplineAugmentation(PCSAugmentation):
             )
         )
         coords += center
-        
-        return np.around(coords).astype(np.int32)
 
+        return np.around(coords).astype(np.int32)
 
     def get_transform(self, image, segmentations, rotated_boxes):
         if random.random() > self.p_image:
@@ -435,7 +533,6 @@ class PCSSplineAugmentation(PCSAugmentation):
                 cv2.LINE_AA,
             )
 
-        
         mask = cv2.resize(
             mask, image.shape, interpolation=cv2.INTER_AREA
         )
@@ -457,30 +554,34 @@ class PCSCircularOverlayAugmentation(PCSAugmentation):
 
         if random.random() > 0.5:
             radius = image.shape[0] + int(
-                round(random.uniform(image.shape[0] * 0.8 / 2, image.shape[0] * 1.2 / 2))
+                round(random.uniform(
+                    image.shape[0] * 0.8 / 2, image.shape[0] * 1.2 / 2))
             )
-            center = random.choice(
-                (
-                    [0, 0],
-                    [0, mask.shape[1]],
-                    [mask.shape[0], 0],
-                    [mask.shape[0], mask.shape[1]],
-                )
+            corners = (
+                [0, 0],
+                [0, mask.shape[1]],
+                [mask.shape[0], 0],
+                [mask.shape[0], mask.shape[1]],
             )
-            center[0] += int(round((random.random() - 0.5) * image.shape[0] * 0.2))
-            center[1] += int(round((random.random() - 0.5) * image.shape[1] * 0.2))
+            choice = random.choice(range(len(corners)))
+            center = corners[choice]
+
+            center[0] += int(round((random.random() - 0.5)
+                             * image.shape[0] * 0.2))
+            center[1] += int(round((random.random() - 0.5)
+                             * image.shape[1] * 0.2))
             cv2.circle(mask, tuple(center), radius, 0, thickness=200)
         else:
             ox = random.randint(-31, 31)
             oy = random.randint(-31, 31)
             if oy < 0:
-                mask[oy:,:] = 0
+                mask[oy:, :] = 0
             else:
-                mask[:oy,:] = 0
+                mask[:oy, :] = 0
             if ox < 0:
-                mask[ox:,:] = 0
+                mask[ox:, :] = 0
             else:
-                mask[:ox,:] = 0
+                mask[:ox, :] = 0
 
         kernel_size = random.randint(0, 15)
         if kernel_size > 0:
@@ -507,6 +608,7 @@ class PCSContrastAugmentation(PCSAugmentation):
         else:
             enhancement_factor = 1.5 ** random.uniform(0, 1)
             return PCSContrastTransform(enhancement_factor=enhancement_factor)
+
 
 class PCSHighlightAugmentation(PCSAugmentation):
     def __init__(
@@ -566,7 +668,8 @@ class PCSHighlightAugmentation(PCSAugmentation):
                         128,
                         dtype=np.uint8
                     )
-                    displacement = random.choice((1, -1)) * get_rotation_matrix(box[-1]).dot((0,1)) * box[-2]/2
+                    displacement = random.choice(
+                        (1, -1)) * get_rotation_matrix(box[-1]).dot((0, 1)) * box[-2]/2
                     displacement = displacement.astype(np.int32)
                     highlight_color = random.randint(
                         self.highlight_lower,
@@ -579,7 +682,8 @@ class PCSHighlightAugmentation(PCSAugmentation):
                         255 - highlight_color,
                         -1
                     )
-                    mask[(tmp != 128) * object_mask] = tmp[(tmp != 128) * object_mask]
+                    mask[(tmp != 128) * object_mask] = tmp[(tmp != 128)
+                                                           * object_mask]
             elif random.random() < 0.2:
                 # highlight only crystal edges
                 highlight_color = random.randint(
@@ -608,7 +712,6 @@ class PCSHighlightAugmentation(PCSAugmentation):
         return PCSAdditiveTransform(mask=mask)
 
 
-
 class PCSDefaultAugmentationList(PCSAugmentationList):
     def __init__(
         self,
@@ -617,11 +720,12 @@ class PCSDefaultAugmentationList(PCSAugmentationList):
         p_contrast=1.0,
         p_spline=0.2,
         p_distort=0.05,
-        p_blur=0.7,
-        p_gauss=0.4,
-        p_impuls=0.2,
-        p_wave=0.4,
-        p_perlin=0.4,
+        p_blur=2./3,
+        p_gauss=1./3,
+        p_impuls=0.05,
+        p_wave=1./3,
+        p_worley=1./3,
+        p_perlin=1./3,
         p_overlay=0.2
     ):
         augmentation_list = [
@@ -648,6 +752,9 @@ class PCSDefaultAugmentationList(PCSAugmentationList):
             ),
             PCSWaveAugmentation(
                 p_image=p_wave
+            ),
+            PCSWorleyAugmentation(
+                p_image=p_worley
             ),
             PCSPerlinAugmentation(
                 p_image=p_perlin
@@ -755,11 +862,11 @@ class PCSDefaultAugmentor:
         self.index += 1
 
         augmentation_result = dict(
-            aug_img = image,
-            aug_segms = detectable_segmentations,
-            aug_rbboxs = detectable_rotated_boxes,
-            augmentations = pcs_augmentation_list.augmentations,
-            transforms = pcs_transform_list.transforms
+            aug_img=image,
+            aug_segms=detectable_segmentations,
+            aug_rbboxs=detectable_rotated_boxes,
+            augmentations=pcs_augmentation_list.augmentations,
+            transforms=pcs_transform_list.transforms
         )
 
         return augmentation_result
