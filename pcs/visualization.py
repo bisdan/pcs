@@ -6,7 +6,7 @@ import numpy as np
 from matplotlib import cm
 from mpl_toolkits.axes_grid1 import ImageGrid
 from tqdm import tqdm
-from vcw.vcw_utils import ensure_image_rgb, get_corners, get_rotation_matrix
+from pcs.utils import ensure_image_rgb, get_corners, get_rotation_matrix
 
 
 class PCSDrawer:
