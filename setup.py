@@ -9,5 +9,6 @@ setup(
     install_requires=[
         'pyfastnoisesimd>=0.4.2',
         'opencv-python>=4.5.4',
+        'scipy'
     ]
 )

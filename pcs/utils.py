@@ -40,3 +40,24 @@ def grayscale_to_rgb(image):
 
 def grayscale_to_float(image):
     return image / 255
+
+def ensure_image_rgb(image):
+    if not isinstance(image, np.ndarray):
+        raise ValueError("image is not an instance of 'numpy.ndarray'")
+
+    # ensure that image is in range [0, 255]
+    if np.issubdtype(image.dtype, np.floating):
+        if not (image.max() <= 1 and image.min() >= 0):
+            raise ValueError(f"image float values outside of expected range [0, 1]: [{image.min()}, {image.max()}]")
+        image = grayscale_to_uint(image)
+    elif np.issubdtype(image.dtype, np.integer):
+        if not (image.max() <= 255 and image.min() >= 0):
+            raise ValueError("image integer values outside of expected range [0, 255]")
+    
+    # ensure that image has rgb channels for colored drawing operations
+    if len(image.shape) == 2:
+        image = grayscale_to_rgb(image)
+    elif not image.shape[2] == 3:
+        raise ValueError("three color channels are expected for drawing operations")
+
+    return image
