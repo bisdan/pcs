@@ -357,10 +357,60 @@ class Indexer:
         for _, exporter in exporters.items():
             exporter.write()
 
+import itertools
+def _make_periodic(img, segms, bboxs):
+    """Make image periodic by adding a copy of the image to the right and bottom of the image.
+    The segmentation and bounding boxes are adjusted accordingly.
+    """
+    img = img[:-2, :-2] 
+    imgs = [img, np.flip(img, axis=0), np.flip(img, axis=1), np.flip(img, axis=(0, 1))]
+    
+    nimg = np.empty((2 * img.shape[0], 2 * img.shape[1]), dtype=img.dtype)
+    nsegms = []
+    nbboxs = []
+    for i, j in itertools.product(range(2), range(2)):
+        xo = j * img.shape[0]
+        yo = i * img.shape[1]
+        nimg[xo:xo + img.shape[0], yo:yo + img.shape[1]] = imgs[i * 2 + j]
+        if i == 0 and j == 0:
+            fang = 1
+            fdx = 0
+            fdy = 0
+        elif i == 0 and j == 1:
+            fang = -1
+            fdx = 1 
+            fdy = 0
+        elif i == 1 and j == 0:
+            fang = -1
+            fdx = 0
+            fdy = 1
+        else:
+            fang = 1
+            fdx = 1 
+            fdy = 1
+        for segm in segms:
+            seg = segm.copy()
+            seg[:, 0] += yo - 2 * fdy *(seg[:, 0] - img.shape[1]/2.0)
+            seg[:, 1] += xo - 2 * fdx * (seg[:, 1] - img.shape[0]/2.0)
+            nsegms.append(seg)
+        for box in bboxs:
+            nbboxs.append(
+                np.array(
+                    [
+                        box[0] + xo - 2 * fdx * (box[0] - img.shape[0]/2.0),
+                        box[1] + yo - 2 * fdy *(box[1] - img.shape[1]/2.0),
+                        box[2], box[3], box[4]*fang
+                    ]
+                )
+            )
+    return nimg, nsegms, nbboxs
+
+
+
 
 class PCSDataset:
 
-    def __init__(self, dataset_file, image_dir=None, use_augmentations=False, intermediates=False):
+    def __init__(self, dataset_file, image_dir=None, use_augmentations=False, intermediates=False, periodic=False):
         assert os.path.exists(dataset_file)
         self.dataset_file = dataset_file
         assert self.dataset_file.lower().endswith(".json") or self.dataset_file.lower().endswith(".gzip")
@@ -404,10 +454,13 @@ class PCSDataset:
 
         self.augmentations_active = use_augmentations
         self.intermediates = intermediates
+        self.periodic = periodic
+        self.augmentation_list = None
 
-    def use_augmentations(self, flag=True, intermediates=False):
+    def use_augmentations(self, augmentation_list=None, flag=True, intermediates=False):
         self.augmentations_active = flag
         self.intermediates = intermediates
+        self.augmentation_list = augmentation_list
 
     def write_statistics(self, num_images=20000, digits=2):
         
@@ -674,13 +727,20 @@ class PCSDataset:
         )
 
     def __getitem__(self, idx):
+        
         meta = self.get_meta(idx)
         image = grayscale_to_float(
             cv2.imread(meta["img_path"], cv2.IMREAD_GRAYSCALE)
         )
+
+        
         segmentations = PCSDataset.get_segmentations(meta["img_annos"])
         rotated_boxes = PCSDataset.get_rotated_boxes(meta["img_annos"], segmentations)
         annotation_ids = PCSDataset.get_annotation_ids(meta["img_annos"])
+        
+        if self.periodic:
+            image, segmentations, rotated_boxes = _make_periodic(image, segmentations, rotated_boxes)
+
         return dict(
             meta=meta,
             img=image,
@@ -720,7 +780,7 @@ class PCSDatasetAugmentedIterator:
         self.dataset_iter = PCSDatasetIterator(
             self.dataset
         )
-        self.augmentor = PCSDefaultAugmentor()
+        self.augmentor = PCSDefaultAugmentor(augmentation_list=self.dataset.augmentation_list)
 
     def __next__(self):
 

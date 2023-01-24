@@ -125,7 +125,7 @@ class PCSPerlinAugmentation(PCSAugmentation):
         if random.random() > self.p_image:
             return PCSNoOpTransform()
         
-        layer_shape = image.shape
+        layer_shape = (2048, 2048)
 
         base_layer = PCSPerlinAugmentation._stack_perlin_layers(
             layer_shape,
@@ -612,17 +612,17 @@ class PCSHighlightAugmentation(PCSAugmentation):
 class PCSDefaultAugmentationList(PCSAugmentationList):
     def __init__(
         self,
-        p_highlight=0.5,
+        p_highlight=0.0,
         p_brightness=1.0,
         p_contrast=1.0,
-        p_spline=0.2,
-        p_distort=0.05,
-        p_blur=0.7,
-        p_gauss=0.4,
-        p_impuls=0.2,
-        p_wave=0.4,
-        p_perlin=0.4,
-        p_overlay=0.2
+        p_spline=0.0,
+        p_distort=0.0,
+        p_blur=0.5,
+        p_gauss=0.5,
+        p_impuls=0.0,
+        p_wave=0.0,
+        p_perlin=0.0,
+        p_overlay=0.0
     ):
         augmentation_list = [
             PCSHighlightAugmentation(
@@ -667,15 +667,41 @@ class PCSDefaultAugmentationList(PCSAugmentationList):
         super().__init__(augmentation_list)
 
 
+class PCSNoAugmentations(PCSAugmentationList):
+    def __init__(self):
+        super().__init__([])
+
+
+class PCSHeavyAugmentationList(PCSAugmentationList):
+
+    def __init__(self):
+        augmentation_list = [
+            PCSSplineAugmentation(0.05),
+            PCSGaussNoiseAugmentation(0.5),            
+            PCSImpulsNoiseAugmentation(0.05),
+            PCSWaveAugmentation(0.3),
+            PCSPerlinAugmentation(0.7),
+            PCSCircularOverlayAugmentation(0.3),
+            PCSBlurAugmentation(0.7),
+            PCSRotationAugmentation(),
+            PCSFlipAugmentation()
+        ]
+        super().__init__(augmentation_list)
+
 class PCSDefaultAugmentor:
     def __init__(
         self,
+        augmentation_list=None,
         min_edge_length=0,
         min_contrast_variation=0,
     ):
         self.index = 0
         self.min_edge_length = min_edge_length
         self.min_contrast_variation = min_contrast_variation
+        if augmentation_list is None:
+            self.augmentation_list = PCSDefaultAugmentationList
+        else:
+            self.augmentation_list = augmentation_list
 
     def filter_invalid(self, image, segmentations, rotated_boxes):
 
@@ -733,7 +759,7 @@ class PCSDefaultAugmentor:
             image, segmentations, rotated_boxes
         )
 
-        pcs_augmentation_list = PCSDefaultAugmentationList()
+        pcs_augmentation_list = self.augmentation_list()
 
         pcs_transform_list = pcs_augmentation_list(
             image, valid_segmentations, valid_rotated_boxes

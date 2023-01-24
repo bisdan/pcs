@@ -90,6 +90,8 @@ class PCSBlendTransform(PCSTransform):
         self.suppress = suppress
 
     def apply_image(self, image):
+        self.base_layer = self.base_layer[:image.shape[0], :image.shape[1]]
+        self.alpha_layer = self.alpha_layer[:image.shape[0], :image.shape[1]]
         nom = 5 * image.std() * self.alpha_layer
         den = 2 ** (2 * self.base_layer - 1)
 
