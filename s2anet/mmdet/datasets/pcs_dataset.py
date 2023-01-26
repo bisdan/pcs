@@ -16,7 +16,7 @@ import pickle
 import cv2
 import random
 import matplotlib.pyplot as plt
-from pcs.augmentations import PCSDefaultAugmentor, PCSMinimalAugmentationList, PCSContrastAugmentationList, PCSPerlinAugmentationList, PCSWaveAugmentationList
+from pcs.augmentations import PCSDefaultAugmentor, PCSDefaultAugmentationList
 from pcs.visualization import PCSDrawer
 
 def norm_angle(angle, range=[-np.pi / 4, np.pi]):
@@ -114,7 +114,7 @@ class PCSTrainDataset:
                  test_mode=False,
                  img_mean=127.5,
                  img_std=73.95,
-                 augmentation_list=PCSMinimalAugmentationList):
+                 augmentation_list=PCSDefaultAugmentationList):
         super().__init__()
         self.ann_file = ann_file
         self.data_root = data_root
