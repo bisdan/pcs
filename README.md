@@ -149,5 +149,10 @@ The PCS data set is distributed in COCO format. If another format is required, t
 
 Model parameters and examples for inference can also be obtained from [LRZ Sync+Share](https://syncandshare.lrz.de/getlink/fiQmpeVNi4XKJ9ioGLsTSVJY). This currently requires a NVIDIA GPU (instructions tested for Tesla V100, RTX 2080, and GTX 1080 with CUDA Version: 11.2 and PyTorch 1.9).
 
-# Changelog
+## Changelog
 - 10.11.2022: Fixed imports due to old naming convention in the visualization script
+- 22.02.2023: Added citation information
+
+## Reference / Citation
+Please cite this reference in publications:
+- Bischoff, D., Walla, B. & Weuster-Botz, D. Machine learning-based protein crystal detection for monitoring of crystallization processes enabled with large-scale synthetic data sets of photorealistic images. Anal Bioanal Chem 414, 6379–6391 (2022). [https://doi.org/10.1007/s00216-022-04101-8](https://doi.org/10.1007/s00216-022-04101-8)
